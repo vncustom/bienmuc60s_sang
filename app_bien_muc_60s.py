@@ -12,8 +12,8 @@ from striprtf.striprtf import rtf_to_text as _rtf_to_text_raw
 
 
 APP_TITLE = "Tự động biên mục 60s sáng"
-DEFAULT_A090 = "K303324"
 DEFAULT_A911 = "Trần Ngọc Thanh Hiền"
+A090_PLACEHOLDER = "K303324"
 
 OUTPUT_WIDTHS = {
     "A": 10.6640625,
@@ -140,9 +140,24 @@ def should_take_playlist_row(name, video_id, status) -> bool:
     if not isinstance(name, str):
         return False
     normalized = name.strip().lower()
+    normalized_key = normalize_vietnamese(normalized)
+    ignored_keywords = (
+        "coming up",
+        "quang cao",
+        "nhung nguoi thuc hien",
+        "end",
+    )
+    if any(keyword in normalized_key for keyword in ignored_keywords):
+        return False
     return (
-        (normalized.startswith("60sa ") or normalized.startswith("live - 60sa"))
+        (
+            normalized.startswith("60sa ")
+            or normalized.startswith("60s ")
+            or normalized.startswith("live - 60sa")
+            or normalized.startswith("live - 60s ")
+        )
         and not normalized.startswith("w60sa")
+        and not normalized.startswith("w60s ")
         and is_numeric_id(video_id)
         and str(status).strip().upper() == "ONLINE"
     )
@@ -154,6 +169,17 @@ def is_vietnamese_upper_title(line: str) -> bool:
     if re.search(r"[a-zàáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]", line):
         return False
     return bool(re.search(r"[A-ZĐÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴ]", line))
+
+
+def has_vietnamese_signal(line: str) -> bool:
+    return bool(re.search(r"[ĐÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴ]", line))
+
+
+def is_source_slug(line: str) -> bool:
+    upper = line.upper()
+    if has_vietnamese_signal(upper):
+        return False
+    return "/" in upper or " - " in upper or upper.count("-") >= 2
 
 
 def is_stop_line(line: str) -> bool:
@@ -216,6 +242,8 @@ def is_title_candidate(line: str) -> bool:
         return False
     upper = line.upper()
     if any(phrase in upper for phrase in CAMERA_CUE_PHRASES):
+        return False
+    if is_source_slug(line):
         return False
     if is_stop_line(line):
         return False
@@ -467,7 +495,6 @@ def build_map(input_dir: str, output_dir: str, a090: str, a911: str, log) -> str
             a505 = f"{idx:02d} - {item['title']}. Thời lượng: {item['duration']}. ID: {item['id']}"
         ws.append([a090, a500, a505, a911 if idx == 1 else None])
 
-    ws.append([a090, None, None, None])
     apply_output_style(ws)
     wb.save(out_path)
     return out_path
@@ -481,8 +508,9 @@ class BienMuc60sApp:
 
         self.input_dir = tk.StringVar()
         self.output_dir = tk.StringVar()
-        self.a090 = tk.StringVar(value=DEFAULT_A090)
+        self.a090 = tk.StringVar()
         self.a911 = tk.StringVar(value=DEFAULT_A911)
+        self.a090_entry = None
 
         self._build_ui()
 
@@ -502,10 +530,12 @@ class BienMuc60sApp:
         frm_meta = ttk.LabelFrame(self.root, text="Thông tin Map", padding=10)
         frm_meta.pack(fill="x", padx=10, pady=(0, 10))
 
-        ttk.Label(frm_meta, text="$a090").grid(row=0, column=0, sticky="w", pady=4)
-        ttk.Entry(frm_meta, textvariable=self.a090, width=24).grid(row=0, column=1, sticky="w", padx=6)
+        ttk.Label(frm_meta, text="Mã bản tin $a090").grid(row=0, column=0, sticky="w", pady=4)
+        self.a090_entry = tk.Entry(frm_meta, textvariable=self.a090, width=24)
+        self.a090_entry.grid(row=0, column=1, sticky="w", padx=6)
+        self._install_placeholder(self.a090_entry, A090_PLACEHOLDER)
 
-        ttk.Label(frm_meta, text="$a911 dòng đầu").grid(row=1, column=0, sticky="w", pady=4)
+        ttk.Label(frm_meta, text="Người biên mục $a911").grid(row=1, column=0, sticky="w", pady=4)
         ttk.Entry(frm_meta, textvariable=self.a911, width=40).grid(row=1, column=1, sticky="w", padx=6)
 
         frm_actions = ttk.Frame(self.root, padding=(10, 0))
@@ -515,6 +545,23 @@ class BienMuc60sApp:
 
         self.log_box = scrolledtext.ScrolledText(self.root, state="disabled", wrap="word", font=("Consolas", 10))
         self.log_box.pack(fill="both", expand=True, padx=10, pady=10)
+
+    def _install_placeholder(self, entry: tk.Entry, text: str):
+        entry.insert(0, text)
+        entry.configure(foreground="grey")
+
+        def clear_placeholder(_event=None):
+            if entry.get() == text and str(entry.cget("foreground")) == "grey":
+                entry.delete(0, tk.END)
+                entry.configure(foreground="black")
+
+        def restore_placeholder(_event=None):
+            if not entry.get().strip():
+                entry.insert(0, text)
+                entry.configure(foreground="grey")
+
+        entry.bind("<FocusIn>", clear_placeholder)
+        entry.bind("<FocusOut>", restore_placeholder)
 
     def choose_input(self):
         path = filedialog.askdirectory(title="Chọn thư mục input")
@@ -535,6 +582,36 @@ class BienMuc60sApp:
         self.log_box.see(tk.END)
         self.log_box.configure(state="disabled")
 
+    def show_success_dialog(self, out_path: str):
+        top = tk.Toplevel(self.root)
+        top.title("Thành công")
+        top.resizable(False, False)
+        top.transient(self.root)
+        top.grab_set()
+
+        frm = ttk.Frame(top, padding=16)
+        frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text="Đã tạo file Map thành công:").pack(anchor="w")
+        ttk.Label(frm, text=out_path, wraplength=560).pack(anchor="w", pady=(6, 14))
+
+        buttons = ttk.Frame(frm)
+        buttons.pack(anchor="e")
+
+        def open_output_folder():
+            folder = os.path.dirname(out_path)
+            try:
+                os.startfile(folder)
+            except Exception as exc:
+                messagebox.showerror("Lỗi", f"Không mở được thư mục output:\n{exc}", parent=top)
+
+        ttk.Button(buttons, text="Open output folder", command=open_output_folder).pack(side="left", padx=(0, 8))
+        ttk.Button(buttons, text="OK", command=top.destroy).pack(side="left")
+
+        top.update_idletasks()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - top.winfo_width()) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - top.winfo_height()) // 2
+        top.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+
     def start(self):
         input_dir = self.input_dir.get().strip()
         if not input_dir or not os.path.isdir(input_dir):
@@ -543,6 +620,8 @@ class BienMuc60sApp:
 
         output_dir = self.output_dir.get().strip() or os.path.join(input_dir, "output")
         a090 = self.a090.get().strip()
+        if self.a090_entry and a090 == A090_PLACEHOLDER and str(self.a090_entry.cget("foreground")) == "grey":
+            a090 = ""
         if not a090:
             messagebox.showerror("Lỗi", "Vui lòng nhập mã $a090.")
             return
@@ -554,7 +633,7 @@ class BienMuc60sApp:
             try:
                 out_path = build_map(input_dir, output_dir, a090, self.a911.get().strip(), self.log)
                 self.log(f"Hoàn tất: {out_path}")
-                self.root.after(0, lambda: messagebox.showinfo("Thành công", f"Đã tạo file:\n{out_path}"))
+                self.root.after(0, lambda: self.show_success_dialog(out_path))
             except Exception as exc:
                 self.log(f"LỖI: {exc}")
                 self.root.after(0, lambda: messagebox.showerror("Lỗi", str(exc)))
