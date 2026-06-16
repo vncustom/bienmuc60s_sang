@@ -186,8 +186,12 @@ def should_take_playlist_row(name, video_id, status) -> bool:
         (
             normalized.startswith("60sa ")
             or normalized.startswith("60s ")
+            or normalized.startswith("gat60s ")
+            or normalized.startswith("60st")
             or normalized.startswith("live - 60sa")
             or normalized.startswith("live - 60s ")
+            or normalized.startswith("live - gat60s ")
+            or normalized.startswith("live - 60st")
         )
         and not normalized.startswith("w60sa")
         and not normalized.startswith("w60s ")
