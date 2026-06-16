@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 import re
 import threading
@@ -11,6 +12,8 @@ from openpyxl.styles import Font
 from striprtf.striprtf import rtf_to_text as _rtf_to_text_raw
 
 
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_FILE = os.path.join(APP_DIR, "app_bien_muc_60s.log")
 APP_TITLE = "Tự động biên mục 60s sáng"
 DEFAULT_A911 = "Trần Ngọc Thanh Hiền"
 A090_PLACEHOLDER = "K303324"
@@ -51,6 +54,36 @@ CREW_PREFIX_MAP = (
     ("MC ", "dan_chuong_trinh"),
     ("ĐD ", "dao_dien"),
     ("KT ", "ky_thuat"),
+)
+
+
+def prune_old_log_lines(log_path: str):
+    if not os.path.exists(log_path):
+        return
+    today_prefix = datetime.datetime.now().strftime("%Y-%m-%d")
+    try:
+        with open(log_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        kept_lines = []
+        keep_current_block = False
+        for line in lines:
+            date_match = re.match(r"^(\d{4}-\d{2}-\d{2})", line)
+            if date_match:
+                keep_current_block = date_match.group(1) == today_prefix
+            if keep_current_block:
+                kept_lines.append(line)
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.writelines(kept_lines)
+    except Exception:
+        pass
+
+
+prune_old_log_lines(LOG_FILE)
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    encoding="utf-8",
 )
 
 
@@ -504,7 +537,7 @@ class BienMuc60sApp:
     def __init__(self, root):
         self.root = root
         self.root.title(APP_TITLE)
-        self.root.geometry("820x560")
+        self.root.geometry("860x650")
 
         self.input_dir = tk.StringVar()
         self.output_dir = tk.StringVar()
@@ -525,7 +558,21 @@ class BienMuc60sApp:
         ttk.Label(frm_paths, text="Thư mục output").grid(row=1, column=0, sticky="w", pady=4)
         ttk.Entry(frm_paths, textvariable=self.output_dir, width=76).grid(row=1, column=1, sticky="ew", padx=6)
         ttk.Button(frm_paths, text="Chọn...", command=self.choose_output).grid(row=1, column=2)
+        ttk.Label(
+            frm_paths,
+            text="(Mặc định tạo folder 'output' trong input nếu để trống)",
+            font=("Arial", 8, "italic"),
+        ).grid(row=2, column=1, sticky="w", padx=6, pady=(0, 4))
         frm_paths.columnconfigure(1, weight=1)
+
+        frm_note = ttk.LabelFrame(self.root, text="Lưu ý định dạng đầu vào để bóc tách đúng", padding=(10, 6))
+        frm_note.pack(fill="x", padx=10, pady=(0, 10))
+        note_text = (
+            "• File LIST (Excel): Bắt đầu bằng 'BT60SAM_' (.xlsx).\n"
+            "  Cột A: Tên file ('60s ' hoặc '60sa '), Cột C: ID.\n"
+            "• File RTF tin tức: tên file nên khớp với Cột A trong LIST để app tìm đúng kịch bản."
+        )
+        ttk.Label(frm_note, text=note_text, justify="left", font=("Arial", 9)).pack(anchor="w")
 
         frm_meta = ttk.LabelFrame(self.root, text="Thông tin Map", padding=10)
         frm_meta.pack(fill="x", padx=10, pady=(0, 10))
@@ -574,6 +621,7 @@ class BienMuc60sApp:
             self.output_dir.set(path)
 
     def log(self, message: str):
+        logging.info(message)
         self.root.after(0, self._append_log, message)
 
     def _append_log(self, message: str):
@@ -635,6 +683,7 @@ class BienMuc60sApp:
                 self.log(f"Hoàn tất: {out_path}")
                 self.root.after(0, lambda: self.show_success_dialog(out_path))
             except Exception as exc:
+                logging.exception("Lỗi khi biên mục 60s sáng")
                 self.log(f"LỖI: {exc}")
                 self.root.after(0, lambda: messagebox.showerror("Lỗi", str(exc)))
             finally:

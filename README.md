@@ -43,6 +43,10 @@ Các cột trong file Map:
 - `$a505`: danh sách tin theo thứ tự playlist.
 - `$a911`: người biên mục, chỉ ghi ở dòng dữ liệu đầu tiên.
 
+## Log
+
+App ghi log vào `app_bien_muc_60s.log` trong cùng thư mục chương trình. Khi mở app, log của các ngày cũ được xóa để file log không phình to theo thời gian.
+
 ## Quy tắc chính
 
 App lọc tin từ playlist bằng các dòng bắt đầu `60sa ` hoặc `Live - 60sa`, có ID số và trạng thái `ONLINE`. Các mục như `W60sa`, quảng cáo, coming up, gạt, hình hiệu không được đưa vào Map.
