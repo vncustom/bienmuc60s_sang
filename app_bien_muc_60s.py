@@ -14,9 +14,23 @@ from striprtf.striprtf import rtf_to_text as _rtf_to_text_raw
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE = os.path.join(APP_DIR, "app_bien_muc_60s.log")
-APP_TITLE = "Tự động biên mục 60s sáng"
-DEFAULT_A911 = "Trần Ngọc Thanh Hiền"
+APP_TITLE = "Tự động biên mục 60sa"
 A090_PLACEHOLDER = "K303324"
+
+MODE_CONFIG = {
+    "sang": {
+        "label": "60s sáng",
+        "list_prefix": "BT60SAM_",
+        "output_prefix": "Map_BanTin60GiaySang",
+        "a911": "Trần Ngọc Thanh Hiền",
+    },
+    "toi": {
+        "label": "60s tối",
+        "list_prefix": "BT60SCHIEU_",
+        "output_prefix": "Map_BanTin60GiayChieu",
+        "a911": "Lê Thị Mai Liên",
+    },
+}
 
 OUTPUT_WIDTHS = {
     "A": 10.6640625,
@@ -118,7 +132,7 @@ def is_numeric_id(value) -> bool:
         return True
     if isinstance(value, float):
         return value.is_integer()
-    return str(value).strip().isdigit()
+    return bool(re.fullmatch(r"\d+[A-Za-z]*", str(value).strip()))
 
 
 def id_to_text(value) -> str:
@@ -174,29 +188,22 @@ def should_take_playlist_row(name, video_id, status) -> bool:
         return False
     normalized = name.strip().lower()
     normalized_key = normalize_vietnamese(normalized)
-    ignored_keywords = (
-        "coming up",
-        "quang cao",
-        "nhung nguoi thuc hien",
-        "end",
-    )
-    if any(keyword in normalized_key for keyword in ignored_keywords):
+    if (
+        "coming up" in normalized_key
+        or "nhung nguoi thuc hien" in normalized_key
+        or " end" in normalized_key
+    ):
+        return False
+    if normalized.startswith("60s w "):
         return False
     return (
         (
-            normalized.startswith("60sa ")
-            or normalized.startswith("60s ")
+            normalized.startswith("60s")
             or normalized.startswith("gat60s ")
             or normalized.startswith("60st")
-            or normalized.startswith("live - 60sa")
-            or normalized.startswith("live - 60s ")
-            or normalized.startswith("live - gat60s ")
-            or normalized.startswith("live - 60st")
+            or normalized.startswith("live -")
         )
-        and not normalized.startswith("w60sa")
-        and not normalized.startswith("w60s ")
         and is_numeric_id(video_id)
-        and str(status).strip().upper() == "ONLINE"
     )
 
 
@@ -468,14 +475,15 @@ def apply_output_style(ws):
         ws.column_dimensions[col].width = width
 
 
-def build_map(input_dir: str, output_dir: str, a090: str, a911: str, log) -> str:
+def build_map(input_dir: str, output_dir: str, a090: str, a911: str, mode_config: dict[str, str], log) -> str:
+    list_prefix = mode_config["list_prefix"]
     list_files = [
         f
         for f in os.listdir(input_dir)
-        if f.upper().startswith("BT60SAM_") and f.lower().endswith(".xlsx")
+        if f.upper().startswith(list_prefix.upper()) and f.lower().endswith(".xlsx")
     ]
     if not list_files:
-        raise RuntimeError("Không tìm thấy file BT60SAM_*.xlsx trong thư mục input.")
+        raise RuntimeError(f"Không tìm thấy file {list_prefix}*.xlsx trong thư mục input.")
 
     list_files.sort()
     list_path = os.path.join(input_dir, list_files[0])
@@ -501,7 +509,7 @@ def build_map(input_dir: str, output_dir: str, a090: str, a911: str, log) -> str
             )
 
     if not items:
-        raise RuntimeError("Không lọc được tin 60s sáng nào từ playlist.")
+        raise RuntimeError(f"Không lọc được tin {mode_config['label']} nào từ playlist.")
 
     log(f"Đã lọc {len(items)} tin.")
 
@@ -515,7 +523,7 @@ def build_map(input_dir: str, output_dir: str, a090: str, a911: str, log) -> str
     crew_rows = build_crew_rows(extract_crew_data(input_dir, log))
 
     os.makedirs(output_dir, exist_ok=True)
-    out_name = f"Map_BanTin60GiaySang_{broadcast_date.year}_ Thang{broadcast_date:%m%d}.xlsx"
+    out_name = f"{mode_config['output_prefix']}_{broadcast_date.year}_ Thang{broadcast_date:%m%d}.xlsx"
     out_path = os.path.join(output_dir, out_name)
 
     wb = openpyxl.Workbook()
@@ -543,15 +551,34 @@ class BienMuc60sApp:
         self.root.title(APP_TITLE)
         self.root.geometry("860x650")
 
+        self.mode = tk.StringVar(value="sang")
         self.input_dir = tk.StringVar()
         self.output_dir = tk.StringVar()
         self.a090 = tk.StringVar()
-        self.a911 = tk.StringVar(value=DEFAULT_A911)
+        self.a911 = tk.StringVar(value=MODE_CONFIG["sang"]["a911"])
+        self.note_text = tk.StringVar()
         self.a090_entry = None
 
         self._build_ui()
 
     def _build_ui(self):
+        frm_mode = ttk.LabelFrame(self.root, text="Chọn bản tin", padding=10)
+        frm_mode.pack(fill="x", padx=10, pady=(10, 0))
+        ttk.Radiobutton(
+            frm_mode,
+            text="60s sáng",
+            variable=self.mode,
+            value="sang",
+            command=self.on_mode_change,
+        ).pack(side="left", padx=(0, 20))
+        ttk.Radiobutton(
+            frm_mode,
+            text="60s tối",
+            variable=self.mode,
+            value="toi",
+            command=self.on_mode_change,
+        ).pack(side="left")
+
         frm_paths = ttk.LabelFrame(self.root, text="Đường dẫn", padding=10)
         frm_paths.pack(fill="x", padx=10, pady=10)
 
@@ -571,12 +598,7 @@ class BienMuc60sApp:
 
         frm_note = ttk.LabelFrame(self.root, text="Lưu ý định dạng đầu vào để bóc tách đúng", padding=(10, 6))
         frm_note.pack(fill="x", padx=10, pady=(0, 10))
-        note_text = (
-            "• File LIST (Excel): Bắt đầu bằng 'BT60SAM_' (.xlsx).\n"
-            "  Cột A: Tên file ('60s ' hoặc '60sa '), Cột C: ID.\n"
-            "• File RTF tin tức: tên file nên khớp với Cột A trong LIST để app tìm đúng kịch bản."
-        )
-        ttk.Label(frm_note, text=note_text, justify="left", font=("Arial", 9)).pack(anchor="w")
+        ttk.Label(frm_note, textvariable=self.note_text, justify="left", font=("Arial", 9)).pack(anchor="w")
 
         frm_meta = ttk.LabelFrame(self.root, text="Thông tin Map", padding=10)
         frm_meta.pack(fill="x", padx=10, pady=(0, 10))
@@ -596,6 +618,21 @@ class BienMuc60sApp:
 
         self.log_box = scrolledtext.ScrolledText(self.root, state="disabled", wrap="word", font=("Consolas", 10))
         self.log_box.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.on_mode_change()
+
+    def get_mode_config(self) -> dict[str, str]:
+        return MODE_CONFIG.get(self.mode.get(), MODE_CONFIG["sang"])
+
+    def on_mode_change(self):
+        mode_config = self.get_mode_config()
+        self.a911.set(mode_config["a911"])
+        self.note_text.set(
+            f"• File LIST (Excel): Bắt đầu bằng '{mode_config['list_prefix']}YYYYMMDD' (.xlsx).\n"
+            "  Cột A: tên file bắt đầu bằng '60s', 'gat60s ', '60st' hoặc 'live -'.\n"
+            "  Cột C: ID"
+            "• File RTF tin tức: tên file nên khớp với Cột A trong LIST để app tìm đúng kịch bản."
+        )
 
     def _install_placeholder(self, entry: tk.Entry, text: str):
         entry.insert(0, text)
@@ -678,16 +715,18 @@ class BienMuc60sApp:
             messagebox.showerror("Lỗi", "Vui lòng nhập mã $a090.")
             return
 
+        mode_config = self.get_mode_config()
+
         self.btn_start.configure(state="disabled")
-        self.log("Bắt đầu biên mục 60s sáng...")
+        self.log(f"Bắt đầu biên mục {mode_config['label']}...")
 
         def worker():
             try:
-                out_path = build_map(input_dir, output_dir, a090, self.a911.get().strip(), self.log)
+                out_path = build_map(input_dir, output_dir, a090, self.a911.get().strip(), mode_config, self.log)
                 self.log(f"Hoàn tất: {out_path}")
                 self.root.after(0, lambda: self.show_success_dialog(out_path))
             except Exception as exc:
-                logging.exception("Lỗi khi biên mục 60s sáng")
+                logging.exception("Lỗi khi biên mục %s", mode_config["label"])
                 self.log(f"LỖI: {exc}")
                 self.root.after(0, lambda: messagebox.showerror("Lỗi", str(exc)))
             finally:
