@@ -201,7 +201,7 @@ def should_take_playlist_row(name, video_id, status) -> bool:
             normalized.startswith("60s")
             or normalized.startswith("gat60s ")
             or normalized.startswith("60st")
-            or normalized.startswith("live -")
+            or normalized.startswith("live ")
         )
         and is_numeric_id(video_id)
     )
@@ -629,7 +629,7 @@ class BienMuc60sApp:
         self.a911.set(mode_config["a911"])
         self.note_text.set(
             f"• File LIST (Excel): Bắt đầu bằng '{mode_config['list_prefix']}YYYYMMDD' (.xlsx).\n"
-            "  Cột A: tên file bắt đầu bằng '60s', 'gat60s ', '60st' hoặc 'live -'.\n"
+            "  Cột A: tên file bắt đầu bằng '60s', 'gat60s ', '60st' hoặc 'live '.\n"
             "  Cột C: ID"
             "• File RTF tin tức: tên file nên khớp với Cột A trong LIST để app tìm đúng kịch bản."
         )
