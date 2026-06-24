@@ -61,6 +61,12 @@ Quy tắc bắt dòng tin dùng chung cho cả `60s sáng` và `60s tối`:
 - Bỏ qua nếu Cột A chứa `coming up`, `nhung nguoi thuc hien`, hoặc ` end`.
 - Cột C bắt buộc có ID dạng số. Nếu Cột C trống hoặc bắt đầu bằng chữ, ví dụ `qc123`, dòng đó không được bắt.
 
-Tiêu đề tin được tách từ RTF theo quy tắc chung: dòng đầu tiên IN HOA, BOLD, màu GREEN, dài hơn 15 ký tự. Nếu dòng ngay dưới cũng IN HOA, BOLD, GREEN và hợp lệ thì gộp thêm, tối đa 2 dòng. Các dòng cue hình như `CẬN GIỮA`, `TOÀN GIỮA`, `CẬN PHẢI` không được coi là tiêu đề.
+Tiêu đề tin được tách từ phần đầu file RTF theo thứ tự xuất hiện:
+
+- Lấy dòng đầu tiên IN HOA, màu GREEN, dài hơn 20 ký tự và thuộc phần đầu kịch bản. Dòng này không bắt buộc BOLD.
+- Nếu dòng ngay phía dưới cũng IN HOA, GREEN và dài hơn 20 ký tự thì nối thêm vào tiêu đề.
+- Tiêu đề chỉ gồm 1 hoặc 2 dòng, không nối nhiều hơn.
+- Dừng vùng tìm tiêu đề khi gặp dòng thân bài màu đỏ hoặc màu đen, dòng bắt đầu bằng `PB `, hoặc separator `===`.
+- Loại tuyệt đối các dòng cue bắt đầu bằng `C1`, `C2`, `C3`, `C4`; không lấy các dòng này làm tiêu đề.
 
 Ê-kíp sản xuất được đọc từ file có tên chứa `NHUNG NGUOI THUC HIEN.rtf`. Nếu thiếu file hoặc thiếu chức danh, app bổ sung từ tên file RTF tiền tố như `BGĐ`, `BPT`, `BT`, `BD`, `MC`, `ĐD`, `KT`.

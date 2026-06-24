@@ -249,6 +249,22 @@ def is_stop_line(line: str) -> bool:
     return upper.startswith(stop_prefixes) or set(upper) <= {"=", "-", " "}
 
 
+def is_cue_line(line: str) -> bool:
+    return bool(re.match(r"^\s*C[1-4]\b", line.upper()))
+
+
+def is_title_search_boundary(line: str, paragraph_raw: str, green_cf_tag: str) -> bool:
+    stripped = line.strip()
+    upper = stripped.upper()
+    if stripped.startswith("===") or set(stripped) <= {"=", "-", " "}:
+        return True
+    if re.match(r"^PB\b", upper):
+        return True
+    if green_cf_tag not in paragraph_raw:
+        return True
+    return False
+
+
 def get_green_cf_tag(rtf_raw: str) -> str:
     match = re.search(r"\{\\colortbl([^}]+)\}", rtf_raw)
     if not match:
@@ -282,7 +298,9 @@ def is_bold_green_paragraph(paragraph_raw: str, green_cf_tag: str) -> bool:
 
 
 def is_title_candidate(line: str) -> bool:
-    if len(line) <= 15:
+    if len(line) <= 20:
+        return False
+    if is_cue_line(line):
         return False
     upper = line.upper()
     if any(phrase in upper for phrase in CAMERA_CUE_PHRASES):
@@ -292,6 +310,10 @@ def is_title_candidate(line: str) -> bool:
     if is_stop_line(line):
         return False
     return is_vietnamese_upper_title(line)
+
+
+def is_green_title_candidate(paragraph_raw: str, line: str, green_cf_tag: str) -> bool:
+    return green_cf_tag in paragraph_raw and is_title_candidate(line)
 
 
 def extract_title_from_rtf(rtf_raw: str) -> str:
@@ -304,37 +326,33 @@ def extract_title_from_rtf(rtf_raw: str) -> str:
         rtf_prefix = r"{\rtf1\ansi "
         rtf_body = rtf_raw
     paragraphs = re.split(r"\\par(?![a-zA-Z])", rtf_body)
-    candidates: list[tuple[int, str]] = []
 
     for idx, paragraph in enumerate(paragraphs):
-        if not is_bold_green_paragraph(paragraph, green_cf_tag):
-            continue
         line = rtf_fragment_to_text(paragraph, rtf_prefix)
-        if is_title_candidate(line):
-            candidates.append((idx, line))
+        if not line:
+            continue
+        if is_title_search_boundary(line, paragraph, green_cf_tag):
+            break
+        if not is_green_title_candidate(paragraph, line, green_cf_tag):
+            continue
 
-    if not candidates:
-        plain_lines = [
-            line
-            for line in (clean_line(x) for x in rtf_to_text(rtf_raw).replace("\r", "").split("\n"))
-            if line
-        ]
-        for line in plain_lines:
-            if is_title_candidate(line):
-                return line
-        return plain_lines[0] if plain_lines else ""
-
-    start_idx, first = candidates[0]
-    title_parts = [first]
-
-    if len(title_parts) < 2 and start_idx + 1 < len(paragraphs):
-        next_paragraph = paragraphs[start_idx + 1]
-        if is_bold_green_paragraph(next_paragraph, green_cf_tag):
+        title_parts = [line]
+        if idx + 1 < len(paragraphs):
+            next_paragraph = paragraphs[idx + 1]
             next_line = rtf_fragment_to_text(next_paragraph, rtf_prefix)
-            if is_title_candidate(next_line):
+            if is_green_title_candidate(next_paragraph, next_line, green_cf_tag):
                 title_parts.append(next_line)
+        return " ".join(title_parts)
 
-    return " ".join(title_parts)
+    plain_lines = [
+        line
+        for line in (clean_line(x) for x in rtf_to_text(rtf_raw).replace("\r", "").split("\n"))
+        if line
+    ]
+    for line in plain_lines:
+        if is_title_candidate(line):
+            return line
+    return plain_lines[0] if plain_lines else ""
 
 
 def read_rtf_raw(path: str) -> str:

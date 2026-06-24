@@ -1,6 +1,7 @@
 # Thư mục input/output chứa dữ liệu nội bộ
 input/
 output/
+tests/
 
 # Cấu hình API key cá nhân
 config.json
